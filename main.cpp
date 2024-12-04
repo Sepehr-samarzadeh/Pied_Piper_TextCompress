@@ -9,7 +9,14 @@
 #include <map>
 
 
+enum LZW_Status{
+    Success,
+    Error_Empty_Dictionary,
+    Error_Uncompressed_String
+};
+
 typedef std::map<std::string,std::string>LZWDictionary;
+typedef std::tuple<std::string,LZW_Status>LZW_Output;
 static LZWDictionary dictionaryCompress;
 static LZWDictionary dictionaryDEcompress;
 
@@ -56,6 +63,53 @@ void DictAdd_keyValue(const std::string & new_entry_str,LZWDictionary& dictionar
     key_a += 1;
 }
 
+LZW_Output Compress(const std::string & text){
+    size_t len = text.size();
+    if(len <=1){
+        return  {"u"+text,Success};
+    }
+
+    LZWDictionary dict;
+    uint32_t a = 0;
+    uint32_t b = 1;
+    std::string result = "c";
+    size_t result_len = 1;
+    std::string word = "";
+    for(size_t i = 0 ; i < len ; ++i){
+        char c = text[i];
+        std::string wc = word + CharTostring(c);
+        if(dictionaryCompress.find(wc) == dictionaryCompress.end() && dict.find(wc) == dict.end()){
+            std::string write = GetWordFromDict(word,dictionaryCompress,dict);
+
+            if(write.empty()){
+                return {nullptr,Error_Empty_Dictionary};
+            }
+
+            result += write;
+            result_len += write.size();
+
+            if(len <= result_len){
+                return {"u"+text,Success};
+            }
+            DictAdd_keyValue(wc,dict,a,b);
+            word = c;
+        } else{
+            word = wc;
+        }
+    }
+    std::string finalWrite = GetWordFromDict(word,dictionaryCompress,dict);
+    if(finalWrite.empty()){
+        return {nullptr,Error_Empty_Dictionary};
+    }
+
+    result += finalWrite;
+    result_len += finalWrite.size();
+
+    if(len <= result_len){
+        return {"u" + text,Success};
+    }
+    return {result,Success};
+}
 
 
 
