@@ -2,9 +2,7 @@
 #include <fstream>
 #include <list>
 #include <sstream>
-#include <iterator>
 #include <vector>
-#include <unordered_map>
 #include <string>
 #include <map>
 
@@ -27,7 +25,7 @@ std::string CharTostring(char c){
 }
 
 
-std::string GetWordFromDict(const std::string &word,const LZWDictionary& asciiDict,const LZWDictionary& combineDict){
+std::string GetWordCodeFromDictionaries(const std::string &word, const LZWDictionary& asciiDict, const LZWDictionary& combineDict){
     if(asciiDict.find(word)!=asciiDict.end()){
         return asciiDict.at(word);
     }
@@ -59,9 +57,23 @@ void DictAdd_keyValue(const std::string & new_entry_str,LZWDictionary& dictionar
             dictionary.clear();
         }
     }
-    dictionary[new_entry_str] = CharTostring(static_cast<char>(key_a)) + CharTostring(static_cast<char>(key_a));
+    dictionary[new_entry_str] = CharTostring(static_cast<char>(key_a)) + CharTostring(static_cast<char>(key_b));
     key_a += 1;
 }
+
+void DictAdd_KeyValue_Second(const std::string & str,LZWDictionary&dict,uint32_t&a,uint32_t&b){
+    if(a>=256){
+        a = 0;
+        b +=1;
+        if(b >= 256){
+            b = 1;
+            dict.clear();
+        }
+    }
+    dict[CharTostring(static_cast<char>(a)) + CharTostring(static_cast<char>(b))] = str;
+    a+=1;
+}
+
 
 LZW_Output Compress(const std::string & text){
     size_t len = text.size();
@@ -79,7 +91,7 @@ LZW_Output Compress(const std::string & text){
         char c = text[i];
         std::string wc = word + CharTostring(c);
         if(dictionaryCompress.find(wc) == dictionaryCompress.end() && dict.find(wc) == dict.end()){
-            std::string write = GetWordFromDict(word,dictionaryCompress,dict);
+            std::string write = GetWordCodeFromDictionaries(word, dictionaryCompress, dict);
 
             if(write.empty()){
                 return {nullptr,Error_Empty_Dictionary};
@@ -89,7 +101,7 @@ LZW_Output Compress(const std::string & text){
             result_len += write.size();
 
             if(len <= result_len){
-                return {"u"+text,Success};
+                return {"u"+text,Success}; //TODO:signal user that its not worthy
             }
             DictAdd_keyValue(wc,dict,a,b);
             word = c;
@@ -97,7 +109,7 @@ LZW_Output Compress(const std::string & text){
             word = wc;
         }
     }
-    std::string finalWrite = GetWordFromDict(word,dictionaryCompress,dict);
+    std::string finalWrite = GetWordCodeFromDictionaries(word, dictionaryCompress, dict);
     if(finalWrite.empty()){
         return {nullptr,Error_Empty_Dictionary};
     }
@@ -111,35 +123,153 @@ LZW_Output Compress(const std::string & text){
     return {result,Success};
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-void read_file(const std::string & file_name){
-    std::ifstream infile{"../"+ file_name};
-    std::string line;
-
-    if(infile.is_open()){
-        while (std::getline(infile,line)){
-            std::cout<<line<<std::endl;
+LZW_Output Decompress(const std::string & text){
+    if(text.empty()){
+        return {nullptr,Error_Uncompressed_String};
+    }
+    char check = text[0];
+    if(check == 'u'){
+        return {text.substr(1),Success};
+    }
+    else if (check != 'c'){
+        return {nullptr,Error_Uncompressed_String};
+    }
+    std::string text_data = text.substr(1);
+    size_t len = text_data.size();
+    if(len < 2){
+        return {nullptr,Error_Uncompressed_String};
+    }
+    LZWDictionary dict;
+    uint32_t a = 0;
+    uint32_t b = 1;
+    std::string result;
+    std::string last = text_data.substr(0,2);
+    result = GetWordCodeFromDictionaries(last, dictionaryDEcompress, dict);
+    for(size_t i = 2; i < len ; i+=2){
+        std::string code = text_data.substr(i,2);
+        std::string lastStr = GetWordCodeFromDictionaries(last, dictionaryDEcompress, dict);
+        if(lastStr.empty()){
+            return {nullptr,Error_Empty_Dictionary};
         }
-    } else{
-        std::cerr<<"Error in opening file";
+        std::string toAdd = GetWordCodeFromDictionaries(code, dictionaryDEcompress, dict);
+        if(!toAdd.empty()){
+            result+=toAdd;
+            DictAdd_KeyValue_Second(lastStr + toAdd[0],dict,a,b);
+        } else{
+            std::string tmp = lastStr + lastStr[0];
+            result += tmp;
+            DictAdd_KeyValue_Second(tmp,dict,a,b);
+        }
+        last = code;
+    }
+    return {result,Success};
+}
+
+
+std::string read_file(const std::string &file_name) {
+    std::ifstream infile{"../" + file_name};
+    std::string line;
+    std::string content;
+
+    if (infile.is_open()) {
+        while (std::getline(infile, line)) {
+            content += line + "\n"; // Combine lines with newline
+        }
+    } else {
+        std::cerr << "Error in opening file" << std::endl;
+    }
+
+    return content; // Return the file content as a string
+}
+
+
+void PrintDictionaries(LZWDictionary & dictionary) {
+    std::cout << "Dictionary Compress:" << std::endl;
+    for(const auto & it : dictionary){
+        std::cout<< it.first<<" "<<it.second<<std::endl;
     }
 }
 
+
+
+
 int main() {
+    InitDict();
+
+   /* std::map<std::string,std::string>theMap;
+    theMap.insert({"sep","\0"});
+    for(auto it = theMap.cbegin();it != theMap.cend(); ++it){
+        std::cout <<it->first<<" "<<it->second<<std::endl;
+    }*/
+
+    //PrintDictionaries(dictionaryCompress);
+
+   std::string file_name = "Tlor.txt";
+    std::string content = read_file(file_name);
+
+    if (content.empty()) {
+        std::cerr << "file is empty or cannot be read!" << std::endl;
+        return 1;
+    }
+
+
+    std::cout << "Original Size: " << content.size() << " bytes\n";
+
+    auto [compressed, compress_status] = Compress(content);
+    if (compress_status != Success) {
+        std::cerr << "Compression failed with status: " << compress_status << std::endl;
+        return 1;
+    }
+
+
+    std::cout << "Compressed Size: " << compressed.size() << " bytes\n";
+
+
+    auto [decompressed, decompress_status] = Decompress(compressed);
+    if (decompress_status != Success) {
+        std::cerr << "Decompression failed with status: " << decompress_status << std::endl;
+        return 1;
+    }
+
+
+
+    if (decompressed == content) {
+        std::cout << "passed! Decompressed content matches the original." << std::endl;
+    } else {
+        std::cerr << "failed! Decompressed content does not match the original." << std::endl;
+    }
+
+    return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -183,11 +313,5 @@ int main() {
     }
 
 */
-
-
-
-
-    return 0;
-}
 
 
